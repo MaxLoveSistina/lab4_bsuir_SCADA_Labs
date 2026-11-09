@@ -1,0 +1,1 @@
+{"name":"variant08-model","version":"1.0.0","dependencies":{"aedes":"*","modbus-serial":"*","mqtt":"*"}}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Станция поддержания давления — вариант 8</title>
+<style>
+:root{--bg:#d5dade;--pn:#eceff1;--ink:#1c2630;--mut:#5c6b77;--ln:#9aa7b1;--ok:#2e7d32;--warn:#d99a00;--alm:#c62828;--liq:#4f86b8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI",Roboto,Arial,sans-serif}
+header{display:flex;gap:16px;align-items:center;padding:10px 18px;background:#2b3a46;color:#fff;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;font-weight:600;margin-right:auto}
+.chip{padding:3px 10px;border-radius:3px;background:#46586a;font-size:13px}.chip.ok{background:var(--ok)}.chip.bad{background:var(--alm)}
+main{display:grid;grid-template-columns:minmax(320px,1.2fr) minmax(300px,1fr);gap:12px;padding:12px;max-width:1300px;margin:auto}
+section{background:var(--pn);border:1px solid var(--ln);padding:12px}section h2{margin:0 0 8px;font-size:15px}
+.wide{grid-column:1/-1}
+svg{width:100%;height:auto;display:block}
+table{width:100%;border-collapse:collapse}td,th{padding:5px 6px;border-bottom:1px solid #ccd3d9;text-align:left}th{color:var(--mut);font-weight:600}
+.val{font-variant-numeric:tabular-nums;font-weight:600}
+.bar{height:16px;background:#cfd6db;position:relative;margin:6px 0 2px}.bar i{position:absolute;inset:0 auto 0 0;background:var(--liq)}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:#222}
+.scale{display:flex;justify-content:space-between;color:var(--mut);font-size:12px}
+button{font:inherit;padding:6px 14px;border:1px solid #5c6b77;background:#fff;cursor:pointer}button:hover{background:#e3e8ec}
+button.on{background:#2b3a46;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.ev.act{background:#f6d4d4}.ev.warn{background:#f7e8b8}.ev.done{color:var(--mut)}
+canvas{width:100%;height:260px;background:#fff;border:1px solid var(--ln)}
+input[type=datetime-local]{font:inherit;padding:4px}.lg span{margin-right:14px}
+#msg{color:var(--alm);min-height:20px}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1>Станция поддержания давления</h1>
+<span class="chip" id="cOpc">arOPC</span><span class="chip" id="cDb">PostgreSQL</span><span class="chip" id="cAl">Аварий нет</span></header>
+<main>
+<section><h2>Мнемосхема</h2>
+<svg viewBox="0 0 460 300">
+ <rect x="40" y="30" width="130" height="230" fill="#fff" stroke="#2b3a46" stroke-width="3"/>
+ <rect id="liq" x="43" y="257" width="124" height="0" fill="#4f86b8"/>
+ <line x1="40" y1="224" x2="170" y2="224" stroke="#d99a00" stroke-dasharray="5 4"/><text x="175" y="228" font-size="11" fill="#5c6b77">20 %</text>
+ <text x="105" y="22" text-anchor="middle" font-size="13" font-weight="600">Ёмкость, уровень</text>
+ <text id="lvlTxt" x="105" y="150" text-anchor="middle" font-size="22" font-weight="700" fill="#1c2630">–</text>
+ <path d="M170 240 H250" stroke="#4f86b8" stroke-width="8" fill="none"/>
+ <path d="M310 240 H430 V120 H330" stroke="#8a97a2" stroke-width="8" fill="none" id="pipe"/>
+ <circle id="pump" cx="280" cy="240" r="30" fill="#b8c1c8" stroke="#2b3a46" stroke-width="3"/>
+ <path d="M268 226 L296 240 L268 254Z" fill="#fff" stroke="#2b3a46" stroke-width="2"/>
+ <text x="280" y="288" text-anchor="middle" font-size="13" font-weight="600">Насос P1</text>
+ <circle cx="330" cy="120" r="34" fill="#fff" stroke="#2b3a46" stroke-width="3"/>
+ <text x="330" y="112" text-anchor="middle" font-size="11" fill="#5c6b77">кПа</text>
+ <text id="prTxt" x="330" y="134" text-anchor="middle" font-size="20" font-weight="700">–</text>
+ <text x="330" y="70" text-anchor="middle" font-size="13" font-weight="600">Давление</text>
+ <text id="pumpTxt" x="280" y="200" text-anchor="middle" font-size="12" fill="#5c6b77">остановлен</text>
+</svg></section>
+
+<section><h2>Параметры и управление</h2>
+<table><tr><td>Давление</td><td class="val" id="vP">–</td></tr><tr><td>Уровень</td><td class="val" id="vL">–</td></tr>
+<tr><td>Уставка пуска / останова</td><td class="val" id="vS">–</td></tr><tr><td>Порог аварии</td><td class="val" id="vA">–</td></tr>
+<tr><td>Насос работает (PumpRunning)</td><td class="val" id="vR">–</td></tr><tr><td>Насос заблокирован (PumpBlocked)</td><td class="val" id="vB">–</td></tr></table>
+<div class="bar" id="bar"><i id="barI"></i><b style="left:30%"></b><b style="left:50%"></b><b style="left:70%;background:#c62828"></b></div>
+<div class="scale"><span>0</span><span>300</span><span>500</span><span>700</span><span>1000 кПа</span></div>
+<div class="row"><button id="bAuto">Автоматический режим</button><button id="bPump">Команда насосу</button></div>
+<div class="mut" style="color:var(--mut);font-size:12px">Команда насосу принимается только в ручном режиме. Блокировка по низкому уровню сильнее любой команды.</div>
+<div id="msg"></div></section>
+
+<section class="wide"><h2>Список событий</h2>
+<div class="row"><button id="bAckAll">Квитировать все</button></div>
+<table><thead><tr><th>Время</th><th>Событие</th><th>Состояние</th><th>Квитировано</th><th>Завершено</th><th></th></tr></thead><tbody id="ev"></tbody></table></section>
+
+<section class="wide"><h2>Архивный тренд (данные из PostgreSQL)</h2>
+<div class="row">С <input type="datetime-local" id="from" step="1"> по <input type="datetime-local" id="to" step="1">
+<button id="bShow">Показать период</button><button id="bLive">Последние 5 минут</button></div>
+<canvas id="cv" width="1200" height="260"></canvas>
+<div class="lg"><span style="color:#1f5fa8">■ Давление (÷10, % шкалы)</span><span style="color:#1d8a6b">■ Уровень, %</span><span style="color:#555">■ Насос работает</span><span style="color:#c62828">■ Авария давления</span></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id), f=(v,d=1)=>typeof v==="number"?v.toFixed(d):"–", yn=v=>v===undefined?"–":v?"да":"нет";
+const t=ms=>ms?new Date(ms).toLocaleTimeString("ru-RU"):"";
+let S={}, live=true;
+async function post(u,b){const r=await fetch(u,{method:"POST",body:JSON.stringify(b)});return r.json()}
+async function write(tag,value){const r=await post("/api/write",{tag,value});$("msg").textContent=r.error||""}
+$("bAuto").onclick=()=>write("AutoMode",!S.values.AutoMode);
+$("bPump").onclick=()=>write("PumpCmd",!S.values.PumpCmd);
+$("bAckAll").onclick=()=>post("/api/ack",{id:"all"});
+$("bLive").onclick=()=>{live=true;loadTrend()};
+$("bShow").onclick=()=>{live=false;loadTrend()};
+function render(){
+ const v=S.values||{}, c=S.connected;
+ $("cOpc").textContent="arOPC: "+(c?"связь есть":"нет связи");$("cOpc").className="chip "+(c?"ok":"bad");
+ $("cDb").textContent="PostgreSQL: "+(S.dbOk?"подключена":"ошибка");$("cDb").className="chip "+(S.dbOk?"ok":"bad");
+ const act=(S.events||[]).filter(e=>e.active&&e.key==="HighPressure").length, un=(S.events||[]).filter(e=>!e.acked).length;
+ $("cAl").textContent=act?"АВАРИЯ: давление":un?"Есть неквитированные":"Аварий нет";$("cAl").className="chip "+(act?"bad":"");
+ const L=v.Level, P=v.Pressure;
+ $("liq").setAttribute("height",typeof L==="number"?L*2.14:0);$("liq").setAttribute("y",257-(typeof L==="number"?L*2.14:0));
+ $("lvlTxt").textContent=f(L)+" %";$("prTxt").textContent=f(P,0);
+ $("prTxt").setAttribute("fill",v.AlarmHighPressure?"#c62828":"#1c2630");
+ $("pump").setAttribute("fill",v.PumpRunning?"#2e7d32":v.PumpBlocked?"#d99a00":"#b8c1c8");
+ $("pipe").setAttribute("stroke",v.PumpRunning?"#4f86b8":"#8a97a2");
+ $("pumpTxt").textContent=v.PumpRunning?"работает":v.PumpBlocked?"заблокирован":"остановлен";
+ $("vP").textContent=f(P)+" кПа";$("vL").textContent=f(L)+" %";
+ $("vS").textContent=f(v.PumpStartSetpoint,0)+" / "+f(v.PumpStopSetpoint,0)+" кПа";$("vA").textContent=f(v.AlarmPressureLimit,0)+" кПа";
+ $("vR").textContent=yn(v.PumpRunning);$("vB").textContent=yn(v.PumpBlocked);
+ $("barI").style.width=Math.min(100,(P||0)/10)+"%";
+ $("bAuto").classList.toggle("on",!!v.AutoMode);$("bAuto").textContent="Автоматический режим: "+(v.AutoMode?"вкл":"выкл");
+ $("bPump").classList.toggle("on",!!v.PumpCmd);$("bPump").textContent="Команда насосу: "+(v.PumpCmd?"пуск":"стоп");
+ $("bPump").disabled=!c||!!v.AutoMode;$("bAuto").disabled=!c;
+ $("ev").innerHTML=(S.events||[]).slice(0,30).map(e=>`<tr class="ev ${e.active?(e.key==="HighPressure"?"act":"warn"):"done"}"><td>${new Date(e.ts).toLocaleString("ru-RU")}</td><td>${e.text}</td><td>${e.active?"активно":"завершено "+t(e.tsClear)}</td><td>${e.acked?(e.tsAck?t(e.tsAck):"не требуется"):"нет"}</td><td>${e.tsClear?t(e.tsClear):""}</td><td>${e.acked?"":`<button onclick="post('/api/ack',{id:${e.id}})">Квитировать</button>`}</td></tr>`).join("");
+}
+async function tick(){try{S=await (await fetch("/api/state")).json();render()}catch{$("cOpc").textContent="Сервер SCADA не отвечает";$("cOpc").className="chip bad"}}
+const loc=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,19);
+async function loadTrend(){
+ let a,b;if(live){b=new Date();a=new Date(b-3e5);$("from").value=loc(a);$("to").value=loc(b)}else{a=new Date($("from").value);b=new Date($("to").value)}
+ const r=await (await fetch(`/api/history?from=${a.toISOString()}&to=${b.toISOString()}`)).json();draw(r.series,+a,+b)
+}
+function draw(sr,a,b){
+ const cv=$("cv"),g=cv.getContext("2d"),W=cv.width,H=cv.height,m=40;g.clearRect(0,0,W,H);
+ g.strokeStyle="#ccd3d9";g.fillStyle="#5c6b77";g.font="11px Segoe UI";
+ for(let i=0;i<=4;i++){const y=H-20-(H-40)*i/4;g.beginPath();g.moveTo(m,y);g.lineTo(W-10,y);g.stroke();g.fillText(i*25+"",8,y+4)}
+ const X=ms=>m+(W-m-10)*(ms-a)/(b-a),Y=p=>H-20-(H-40)*p/100;
+ for(let i=0;i<=5;i++){const ms=a+(b-a)*i/5;g.fillText(new Date(ms).toLocaleTimeString("ru-RU"),X(ms)-22,H-4)}
+ const line=(tag,k,col,step)=>{const d=sr[tag]||[];if(!d.length)return;g.strokeStyle=col;g.lineWidth=1.8;g.beginPath();
+  d.forEach(([ms,v],i)=>{const x=X(ms),y=Y(v*k);if(!i)g.moveTo(x,y);else{if(step)g.lineTo(x,Y(d[i-1][1]*k));g.lineTo(x,y)}});
+  if(step){g.lineTo(X(Math.min(b,Date.now())),Y(d[d.length-1][1]*k))}g.stroke()};
+ line("Pressure",.1,"#1f5fa8");line("Level",1,"#1d8a6b");line("PumpRunning",10,"#555",true);line("AlarmHighPressure",20,"#c62828",true);
+ if(!Object.keys(sr).length){g.fillStyle="#5c6b77";g.font="14px Segoe UI";g.fillText("За выбранный период данных в архиве нет",m+20,H/2)}
+}
+tick();loadTrend();setInterval(tick,1000);setInterval(()=>{if(live)loadTrend()},5000);
+</script></body></html>

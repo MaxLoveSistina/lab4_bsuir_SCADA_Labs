@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: lab4
+      POSTGRES_PASSWORD: lab4local
+      POSTGRES_DB: lab4
+    ports: ["5433:5432"]          # с хоста: psql -p 5433 (5432 может быть занят локальным PostgreSQL)
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab4 -d lab4"]
+      interval: 3s
+      retries: 20
+
+  mqtt:
+    build: .
+    command: node mqtt-broker.js
+    environment: { HOST: 0.0.0.0 }
+    ports: ["1883:1883"]
+
+  model:
+    build: .
+    command: node model.js
+    environment:
+      MODBUS_HOST: 0.0.0.0
+      HTTP_HOST: 0.0.0.0
+      MQTT_URL: mqtt://mqtt:1883
+    ports: ["1502:1502", "4004:4004"]   # 1502: сюда ходит arOPC с Windows
+    depends_on: [mqtt]
+    restart: unless-stopped
+
+  scada:
+    build: ./scada
+    environment:
+      HTTP_HOST: 0.0.0.0
+      DB_HOST: db
+      OPC_URL: opc.tcp://host.docker.internal:4842   # arOPC работает на Windows, вне Docker
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["8080:8080"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
